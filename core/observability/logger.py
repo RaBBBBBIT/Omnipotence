@@ -8,6 +8,18 @@ _env        = "dev"   # 可从环境变量注入
 _service    = "omnipotence-core"
 _version    = "0.1.0"
 
+_default_record = logging.LogRecord(
+    name="",
+    level=logging.INFO,
+    pathname="",
+    lineno=0,
+    msg="",
+    args=(),
+    exc_info=None,
+)
+_reserved_record_attrs = set(vars(_default_record)) | {"message", "asctime"}
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload: Dict[str, Any] = {
@@ -23,8 +35,10 @@ class JsonFormatter(logging.Formatter):
             "step": _step.get(),
         }
         # 合并额外字段
-        if hasattr(record, "extra") and isinstance(record.extra, dict):
-            payload.update(record.extra)
+        for key, value in record.__dict__.items():
+            if key in _reserved_record_attrs or key in payload:
+                continue
+            payload[key] = value
         # 异常栈
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
@@ -53,3 +67,14 @@ def log_context(request_id: str = None, task_id: str = None, step: str = None):
     finally:
         for var, tok in reversed(tokens):
             var.reset(tok)
+
+
+if __name__ == "__main__":
+    logger = get_logger("demo")
+    logger.info("logger initialized for demo")
+    with log_context(request_id="req-123", task_id="task-abc", step="1"):
+        logger.info("logging inside context", extra={"user": "tester"})
+    try:
+        raise ValueError("sample error to demonstrate exception logging")
+    except ValueError:
+        logger.exception("an error occurred during the demo")
